@@ -8,18 +8,13 @@ function App() {
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerConnection = useRef(null);
+    const localStream = useRef(null); // Store the local stream
 
     const configuration = {
         iceServers: [
             {
                 urls: 'stun:stun.l.google.com:19302', // Google's free STUN server
             },
-            // Optional: Add TURN server for NAT traversal (use a reliable service like Twilio or Xirsys)
-            // {
-            //     urls: 'turn:your-turn-server.com:3478',
-            //     username: 'your-username',
-            //     credential: 'your-credential',
-            // },
         ],
     };
 
@@ -81,10 +76,11 @@ function App() {
 
         // Handle remote stream
         peerConnection.current.ontrack = (event) => {
-            console.log('Remote stream received:', event.streams[0]);
+            console.log('Remote track received:', event.streams[0]);
             const [remoteStream] = event.streams;
             if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = remoteStream;
+                console.log('Remote stream attached to video element.');
             }
         };
 
@@ -96,11 +92,12 @@ function App() {
             }
         };
 
-        // Log connection state changes
+        // Debug ICE connection state
         peerConnection.current.oniceconnectionstatechange = () => {
             console.log('ICE Connection State:', peerConnection.current.iceConnectionState);
         };
 
+        // Debug Peer connection state
         peerConnection.current.onconnectionstatechange = () => {
             console.log('Peer Connection State:', peerConnection.current.connectionState);
         };
@@ -116,8 +113,12 @@ function App() {
 
             console.log('Local stream acquired:', stream);
 
+            // Store local stream
+            localStream.current = stream;
+
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
+                console.log('Local stream attached to video element.');
             }
 
             // Initialize peer connection
@@ -149,6 +150,26 @@ function App() {
                 alert('An unexpected error occurred. Please try again.');
             }
         }
+    };
+
+    const leaveRoom = () => {
+        // Close peer connection
+        if (peerConnection.current) {
+            peerConnection.current.close();
+            peerConnection.current = null;
+        }
+
+        // Stop local stream tracks
+        if (localStream.current) {
+            localStream.current.getTracks().forEach((track) => track.stop());
+            localStream.current = null;
+        }
+
+        // Notify the server
+        socket.emit('leave-room', { roomId, userId });
+
+        setConnected(false);
+        console.log('Left the room');
     };
 
     return (
@@ -189,6 +210,20 @@ function App() {
                             style={{ width: '45%', border: '1px solid black' }}
                         />
                     </div>
+                    <button
+                        onClick={leaveRoom}
+                        style={{
+                            marginTop: '20px',
+                            padding: '10px 20px',
+                            fontSize: '16px',
+                            backgroundColor: 'red',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '5px',
+                        }}
+                    >
+                        Leave Room
+                    </button>
                 </div>
             )}
         </div>
