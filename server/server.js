@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: 'https://video-conferencing-system-frontend.onrender.com', // React app URL
+        origin: 'https://video-conferencing-system-frontend.onrender.com',
         methods: ['GET', 'POST'],
     },
 });
@@ -21,13 +21,8 @@ io.on('connection', (socket) => {
     console.log(`New user connected: ${socket.id}`);
 
     socket.on('join-room', (roomId, userId) => {
-        if (!userId || !roomId) {
-            console.warn('Invalid userId or roomId. Ignoring join request.');
-            return;
-        }
-        console.log(`${userId} is joining room: ${roomId}`);
+        if (!userId || !roomId) return;
 
-        // Add user to the room if not already present
         if (!rooms[roomId]) {
             rooms[roomId] = [];
         }
@@ -37,94 +32,36 @@ io.on('connection', (socket) => {
 
         socket.join(roomId);
 
-        // Notify other participants in the room
-        socket.broadcast.to(roomId).emit('user-connected', userId);
-
-        // Notify all clients in the room about the updated participants
         io.to(roomId).emit('update-participants', rooms[roomId]);
 
-        console.log(`Users in room ${roomId}:`, rooms[roomId]);
-
-        // Relay offer to other participants
         socket.on('offer', (data) => {
-            if (data?.userId && data?.offer) {
-                console.log(`Offer from ${data.userId} in room ${roomId}`);
-                socket.broadcast.to(roomId).emit('offer', data);
-            } else {
-                console.warn('Invalid offer data received:', data);
-            }
+            socket.broadcast.to(roomId).emit('offer', data);
         });
 
-        // Relay answer to other participants
         socket.on('answer', (data) => {
-            if (data?.userId && data?.answer) {
-                console.log(`Answer from ${data.userId} in room ${roomId}`);
-                socket.broadcast.to(roomId).emit('answer', data);
-            } else {
-                console.warn('Invalid answer data received:', data);
-            }
+            socket.broadcast.to(roomId).emit('answer', data);
         });
 
-        // Relay ICE candidates to other participants
         socket.on('ice-candidate', (data) => {
-            if (data?.userId && data?.candidate) {
-                console.log(`ICE Candidate from ${data.userId} in room ${roomId}`);
-                socket.broadcast.to(roomId).emit('ice-candidate', data);
-            } else {
-                console.warn('Invalid ICE candidate data received:', data);
-            }
+            socket.broadcast.to(roomId).emit('ice-candidate', data);
         });
 
-        // Handle user disconnection
         socket.on('disconnect', () => {
-            console.log(`${userId} disconnected from room ${roomId}`);
-
-            // Remove user from the room
             if (rooms[roomId]) {
                 rooms[roomId] = rooms[roomId].filter((id) => id !== userId);
-
-                // If the room is empty, delete it
                 if (rooms[roomId].length === 0) {
                     delete rooms[roomId];
                 }
             }
-
-            // Notify all clients in the room about the updated participants
             io.to(roomId).emit('update-participants', rooms[roomId]);
-
-            socket.broadcast.to(roomId).emit('user-disconnected', userId);
-            console.log(`Users in room ${roomId} after disconnection:`, rooms[roomId]);
-        });
-
-        // Clean up event listeners on socket disconnect
-        socket.on('leave-room', () => {
-            console.log(`${userId} manually left room ${roomId}`);
-            socket.leave(roomId);
-
-            // Remove user from the room
-            if (rooms[roomId]) {
-                rooms[roomId] = rooms[roomId].filter((id) => id !== userId);
-
-                // If the room is empty, delete it
-                if (rooms[roomId].length === 0) {
-                    delete rooms[roomId];
-                }
-            }
-
-            // Notify all clients in the room about the updated participants
-            io.to(roomId).emit('update-participants', rooms[roomId]);
-
-            socket.broadcast.to(roomId).emit('user-disconnected', userId);
         });
     });
 });
 
-// Health check route
 app.get('/', (req, res) => {
     res.send('Server is running');
 });
 
-// Start the server
 const PORT = 5000;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

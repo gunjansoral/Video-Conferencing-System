@@ -19,44 +19,23 @@ function App() {
     useEffect(() => {
         // Handle socket connection
         socket.on('connect', () => {
-            console.log('Socket connected:', socket.id);
             setUserId(socket.id);
         });
 
-        // Listen for updates to participants
+        // Listen for updated participants
         socket.on('update-participants', (updatedParticipants) => {
-            console.log('Updated participants from server:', updatedParticipants);
             setParticipants((prev) => {
-                // Check if there are any changes in participants
                 const newParticipants = updatedParticipants.map((id) => {
-                    const existingParticipant = prev.find((p) => p.userId === id);
-                    return existingParticipant || { userId: id, stream: null };
+                    const existing = prev.find((p) => p.userId === id);
+                    return existing || { userId: id, stream: null };
                 });
-                console.log('Updated participants in state:', newParticipants);
                 return newParticipants;
             });
         });
 
-        // Handle when a user connects
-        socket.on('user-connected', (newUserId) => {
-            console.log(`User connected: ${newUserId}`);
-            createPeerConnection(newUserId, true); // Create a new peer connection
-        });
-
-        // Handle when a user disconnects
-        socket.on('user-disconnected', (disconnectedUserId) => {
-            console.log(`User disconnected: ${disconnectedUserId}`);
-            if (peerConnections.current[disconnectedUserId]) {
-                peerConnections.current[disconnectedUserId].close();
-                delete peerConnections.current[disconnectedUserId];
-            }
-        });
-
         // Handle WebRTC signaling
         socket.on('offer', async ({ fromUserId, offer }) => {
-            console.log(`Offer received from ${fromUserId}`);
             createPeerConnection(fromUserId, false);
-
             await peerConnections.current[fromUserId].setRemoteDescription(
                 new RTCSessionDescription(offer)
             );
@@ -67,28 +46,20 @@ function App() {
         });
 
         socket.on('answer', async ({ fromUserId, answer }) => {
-            console.log(`Answer received from ${fromUserId}`);
             await peerConnections.current[fromUserId].setRemoteDescription(
                 new RTCSessionDescription(answer)
             );
         });
 
         socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
-            console.log(`ICE Candidate received from ${fromUserId}`);
-            try {
-                await peerConnections.current[fromUserId].addIceCandidate(
-                    new RTCIceCandidate(candidate)
-                );
-            } catch (error) {
-                console.error('Error adding ICE Candidate:', error);
-            }
+            await peerConnections.current[fromUserId].addIceCandidate(
+                new RTCIceCandidate(candidate)
+            );
         });
 
         return () => {
             socket.off('connect');
             socket.off('update-participants');
-            socket.off('user-connected');
-            socket.off('user-disconnected');
             socket.off('offer');
             socket.off('answer');
             socket.off('ice-candidate');
@@ -102,17 +73,10 @@ function App() {
 
         // Handle remote streams
         peerConnection.ontrack = (event) => {
-            console.log(`Remote track received from ${newUserId}:`, event.streams[0]);
             const [remoteStream] = event.streams;
-
-            setParticipants((prev) => {
-                const updatedParticipants = [
-                    ...prev.filter((p) => p.userId !== newUserId),
-                    { userId: newUserId, stream: remoteStream },
-                ];
-                console.log('Updated participants after track event:', updatedParticipants);
-                return updatedParticipants;
-            });
+            setParticipants((prev) =>
+                prev.map((p) => (p.userId === newUserId ? { ...p, stream: remoteStream } : p))
+            );
         };
 
         // Handle ICE candidates
@@ -142,21 +106,17 @@ function App() {
                         toUserId: newUserId,
                         offer: peerConnection.localDescription,
                     });
-                })
-                .catch((error) => console.error('Error creating offer:', error));
+                });
         }
     };
 
     const joinRoom = async () => {
         try {
-            // Get camera and microphone
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true,
-            });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             localStream.current = stream;
 
-            // Notify server
+            setParticipants([{ userId, stream, isLocal: true }]);
+
             socket.emit('join-room', roomId, userId);
 
             setConnected(true);
