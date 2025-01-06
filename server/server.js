@@ -49,7 +49,7 @@ io.on('connection', (socket) => {
         socket.on('ice-candidate', (data) => {
             console.log('showing ice-candidate-on event', data)
             if (data && data.candidate) {
-                console.log(`Relaying ICE Candidate from ${data.userId} in room ${roomId}`);
+                console.log(`Relaying ICE Candidate from ${data.toUserId} in room ${roomId}`);
                 socket.broadcast.to(roomId).emit('ice-candidate', data);
             } else {
                 console.warn('Invalid ICE candidate received:', data);
