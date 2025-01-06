@@ -6,103 +6,24 @@ function App() {
     const [roomId, setRoomId] = useState('');
     const [userId, setUserId] = useState('');
     const [connected, setConnected] = useState(false);
-    const [participants, setParticipants] = useState([]); // All participants with their streams
-    const peerConnections = useRef({}); // Store peer connections for each participant
+    const [participants, setParticipants] = useState([]); // List of all participants
     const localStream = useRef(null); // Local video/audio stream
-
-    const configuration = {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], // STUN server
-    };
 
     useEffect(() => {
         socket.on('connect', () => {
-            console.log('Socket connected:', socket.id);
             setUserId(socket.id);
         });
 
         socket.on('update-participants', (updatedParticipants) => {
             console.log('Participants updated:', updatedParticipants);
-            setParticipants((prev) =>
-                updatedParticipants.map((id) => {
-                    const existing = prev.find((p) => p.userId === id);
-                    return existing || { userId: id, stream: null };
-                })
-            );
-        });
-
-        socket.on('offer', async ({ fromUserId, offer }) => {
-            console.log(`Offer received from ${fromUserId}`);
-            createPeerConnection(fromUserId, false);
-            await peerConnections.current[fromUserId].setRemoteDescription(
-                new RTCSessionDescription(offer)
-            );
-            const answer = await peerConnections.current[fromUserId].createAnswer();
-            await peerConnections.current[fromUserId].setLocalDescription(answer);
-            socket.emit('answer', { toUserId: fromUserId, answer });
-        });
-
-        socket.on('answer', async ({ fromUserId, answer }) => {
-            console.log(`Answer received from ${fromUserId}`);
-            await peerConnections.current[fromUserId].setRemoteDescription(
-                new RTCSessionDescription(answer)
-            );
-        });
-
-        socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
-            console.log(`ICE Candidate received from ${fromUserId}`);
-            await peerConnections.current[fromUserId].addIceCandidate(
-                new RTCIceCandidate(candidate)
-            );
+            setParticipants(updatedParticipants.map((id) => ({ userId: id })));
         });
 
         return () => {
             socket.off('connect');
             socket.off('update-participants');
-            socket.off('offer');
-            socket.off('answer');
-            socket.off('ice-candidate');
         };
     }, []);
-
-    const createPeerConnection = (newUserId, isInitiator) => {
-        const peerConnection = new RTCPeerConnection(configuration);
-        peerConnections.current[newUserId] = peerConnection;
-
-        peerConnection.ontrack = (event) => {
-            const [remoteStream] = event.streams;
-            console.log(`Stream received from ${newUserId}`);
-            setParticipants((prev) =>
-                prev.map((p) =>
-                    p.userId === newUserId ? { ...p, stream: remoteStream } : p
-                )
-            );
-        };
-
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('ice-candidate', {
-                    toUserId: newUserId,
-                    candidate: event.candidate,
-                });
-            }
-        };
-
-        if (localStream.current) {
-            localStream.current.getTracks().forEach((track) =>
-                peerConnection.addTrack(track, localStream.current)
-            );
-        }
-
-        if (isInitiator) {
-            peerConnection.createOffer().then((offer) => {
-                peerConnection.setLocalDescription(offer);
-                socket.emit('offer', {
-                    toUserId: newUserId,
-                    offer: peerConnection.localDescription,
-                });
-            });
-        }
-    };
 
     const joinRoom = async () => {
         try {
@@ -111,7 +32,8 @@ function App() {
                 audio: true,
             });
             localStream.current = stream;
-            setParticipants([{ userId, stream, isLocal: true }]);
+
+            setParticipants([{ userId, isLocal: true }]);
             socket.emit('join-room', roomId, userId);
             setConnected(true);
         } catch (error) {
@@ -120,15 +42,13 @@ function App() {
     };
 
     const leaveRoom = () => {
-        Object.values(peerConnections.current).forEach((peerConnection) => peerConnection.close());
-        peerConnections.current = {};
+        socket.emit('leave-room', { roomId, userId });
+        setParticipants([]);
+        setConnected(false);
         if (localStream.current) {
             localStream.current.getTracks().forEach((track) => track.stop());
             localStream.current = null;
         }
-        socket.emit('leave-room', { roomId, userId });
-        setParticipants([]);
-        setConnected(false);
     };
 
     return (
@@ -163,7 +83,12 @@ function App() {
                         }}
                     >
                         {participants.map((participant) => (
-                            <VideoScreen key={participant.userId} participant={participant} />
+                            <VideoScreen
+                                key={participant.userId}
+                                participant={participant}
+                                isLocalStream={participant.userId === userId}
+                                localStream={localStream.current}
+                            />
                         ))}
                     </div>
                     <button
