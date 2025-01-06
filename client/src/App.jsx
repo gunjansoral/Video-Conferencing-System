@@ -5,26 +5,25 @@ function App() {
     const [roomId, setRoomId] = useState('');
     const [userId, setUserId] = useState('');
     const [connected, setConnected] = useState(false);
-    const [participants, setParticipants] = useState([]); // Store all participants and their streams
-    const peerConnections = useRef({}); // Store peer connections for each user
-    const localStream = useRef(null); // Store the local stream
+    const [participants, setParticipants] = useState([]); // Store participants and their streams
+    const peerConnections = useRef({}); // Store peer connections for each participant
+    const localStream = useRef(null); // Store local video stream
+    const localVideoRef = useRef(null); // Reference for the local video
 
     const configuration = {
         iceServers: [
-            {
-                urls: 'stun:stun.l.google.com:19302', // Google's free STUN server
-            },
+            { urls: 'stun:stun.l.google.com:19302' }, // Google's free STUN server
         ],
     };
 
     useEffect(() => {
-        // Set userId on initial connection
+        // On socket connection, set userId
         socket.on('connect', () => {
             console.log('Socket connected:', socket.id);
-            setUserId(socket.id); // Set the unique socket ID as userId
+            setUserId(socket.id);
         });
 
-        // Handle user joining the room
+        // Handle new user joining the room
         socket.on('user-connected', (newUserId) => {
             console.log(`${newUserId} joined the room.`);
             createPeerConnection(newUserId, true);
@@ -42,7 +41,7 @@ function App() {
             );
         });
 
-        // Handle incoming WebRTC signaling messages
+        // Handle incoming WebRTC signaling
         socket.on('offer', async ({ fromUserId, offer }) => {
             console.log(`Offer received from ${fromUserId}`);
             createPeerConnection(fromUserId, false);
@@ -76,7 +75,7 @@ function App() {
         });
 
         return () => {
-            // Cleanup event listeners when component unmounts
+            // Cleanup socket listeners on unmount
             socket.off('connect');
             socket.off('user-connected');
             socket.off('user-disconnected');
@@ -91,14 +90,14 @@ function App() {
 
         peerConnections.current[newUserId] = peerConnection;
 
-        // Handle remote stream
+        // Handle remote streams
         peerConnection.ontrack = (event) => {
-            console.log('Remote track received:', event.streams[0]);
+            console.log(`Remote track received from ${newUserId}:`, event.streams[0]);
             const [remoteStream] = event.streams;
 
             setParticipants((prev) => {
-                const existingUser = prev.find((p) => p.userId === newUserId);
-                if (!existingUser) {
+                const existingParticipant = prev.find((p) => p.userId === newUserId);
+                if (!existingParticipant) {
                     return [...prev, { userId: newUserId, stream: remoteStream }];
                 }
                 return prev;
@@ -113,12 +112,12 @@ function App() {
             }
         };
 
-        // If the local stream exists, add tracks to the peer connection
+        // Add local stream tracks if available
         if (localStream.current) {
             localStream.current.getTracks().forEach((track) => peerConnection.addTrack(track, localStream.current));
         }
 
-        // If initiating the connection, create and send an offer
+        // Initiate connection if needed
         if (isInitiator) {
             peerConnection
                 .createOffer()
@@ -133,7 +132,7 @@ function App() {
 
     const joinRoom = async () => {
         try {
-            // Request access to the camera and microphone
+            // Request camera and microphone access
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true,
@@ -141,12 +140,18 @@ function App() {
 
             console.log('Local stream acquired:', stream);
 
-            // Store local stream
+            // Set local stream
             localStream.current = stream;
 
-            setParticipants((prev) => [...prev, { userId, stream }]); // Add self to participants
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+                console.log('Local stream attached to local video element.');
+            }
 
-            // Emit join-room event with roomId and userId
+            // Add self to participants list
+            setParticipants((prev) => [...prev, { userId, stream }]);
+
+            // Emit join room event
             console.log(`Joining room: ${roomId} with userId: ${userId}`);
             socket.emit('join-room', roomId, userId);
 
@@ -157,7 +162,7 @@ function App() {
             if (error.name === 'NotFoundError') {
                 alert('No camera or microphone detected. Please connect and try again.');
             } else if (error.name === 'NotAllowedError') {
-                alert('Access to camera/microphone denied. Please allow permissions and try again.');
+                alert('Camera/microphone permissions denied. Please allow access and try again.');
             } else {
                 alert('An unexpected error occurred. Please try again.');
             }
@@ -169,13 +174,13 @@ function App() {
         Object.values(peerConnections.current).forEach((peerConnection) => peerConnection.close());
         peerConnections.current = {};
 
-        // Stop local stream tracks
+        // Stop local stream
         if (localStream.current) {
             localStream.current.getTracks().forEach((track) => track.stop());
             localStream.current = null;
         }
 
-        // Notify the server
+        // Notify server
         socket.emit('leave-room', { roomId, userId });
 
         setParticipants([]);
@@ -214,24 +219,38 @@ function App() {
                             justifyContent: 'center',
                         }}
                     >
-                        {participants.map((participant) => (
-                            <video
-                                key={participant.userId}
-                                ref={(video) => {
-                                    if (video && participant.stream) {
-                                        video.srcObject = participant.stream;
-                                    }
-                                }}
-                                autoPlay
-                                muted={participant.userId === userId} // Mute your own video
-                                playsInline
-                                style={{
-                                    width: '200px',
-                                    height: '150px',
-                                    border: '1px solid black',
-                                }}
-                            />
-                        ))}
+                        {/* Local video */}
+                        <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            style={{
+                                width: '200px',
+                                height: '150px',
+                                border: '1px solid black',
+                            }}
+                        />
+                        {/* Remote videos */}
+                        {participants
+                            .filter((p) => p.userId !== userId) // Exclude local user from remote videos
+                            .map((participant) => (
+                                <video
+                                    key={participant.userId}
+                                    ref={(video) => {
+                                        if (video && participant.stream) {
+                                            video.srcObject = participant.stream;
+                                        }
+                                    }}
+                                    autoPlay
+                                    playsInline
+                                    style={{
+                                        width: '200px',
+                                        height: '150px',
+                                        border: '1px solid black',
+                                    }}
+                                />
+                            ))}
                     </div>
                     <button
                         onClick={leaveRoom}
