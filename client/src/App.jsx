@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import socket from './socket';
+import VideoScreen from './VideoScreen'; // Import the new component
 
 function App() {
     const [roomId, setRoomId] = useState('');
@@ -98,7 +99,7 @@ function App() {
             setParticipants((prev) => {
                 const existingParticipant = prev.find((p) => p.userId === newUserId);
                 if (!existingParticipant) {
-                    return [...prev, { userId: newUserId, stream: remoteStream }];
+                    return [...prev, { userId: newUserId, stream: remoteStream, isLocal: false }];
                 }
                 return prev;
             });
@@ -149,7 +150,7 @@ function App() {
             }
 
             // Add self to participants list
-            setParticipants((prev) => [...prev, { userId, stream }]);
+            setParticipants((prev) => [...prev, { userId, stream, isLocal: true }]);
 
             // Emit join room event
             console.log(`Joining room: ${roomId} with userId: ${userId}`);
@@ -219,38 +220,10 @@ function App() {
                             justifyContent: 'center',
                         }}
                     >
-                        {/* Local video */}
-                        <video
-                            ref={localVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            style={{
-                                width: '200px',
-                                height: '150px',
-                                border: '1px solid black',
-                            }}
-                        />
-                        {/* Remote videos */}
-                        {participants
-                            .filter((p) => p.userId !== userId) // Exclude local user from remote videos
-                            .map((participant) => (
-                                <video
-                                    key={participant.userId}
-                                    ref={(video) => {
-                                        if (video && participant.stream) {
-                                            video.srcObject = participant.stream;
-                                        }
-                                    }}
-                                    autoPlay
-                                    playsInline
-                                    style={{
-                                        width: '200px',
-                                        height: '150px',
-                                        border: '1px solid black',
-                                    }}
-                                />
-                            ))}
+                        {/* Render local and remote participants */}
+                        {participants.map((participant) => (
+                            <VideoScreen key={participant.userId} participant={participant} />
+                        ))}
                     </div>
                     <button
                         onClick={leaveRoom}
