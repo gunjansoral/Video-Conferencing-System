@@ -84,20 +84,20 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
       const candidate = data.candidate;
 
       console.log(userId, participant.userId, userId === participant.userId)
-      if (userId === participant.userId) {
-        console.log(`ICE Candidate received from ${userId}`);
-        if (peerConnection.current) {
-          try {
-            await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log(`peer connection:`, peerConnection.current);
-          } catch (error) {
-            console.error('Error adding ICE Candidate:', error);
-          }
-        } else {
-          console.log('Peer connection not ready, queuing ICE Candidate.');
-          iceCandidateQueue.current.push(candidate);
+      // if (userId === participant.userId) {
+      console.log(`ICE Candidate received from ${userId}`);
+      if (peerConnection.current) {
+        try {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log(`peer connection:`, peerConnection.current);
+        } catch (error) {
+          console.error('Error adding ICE Candidate:', error);
         }
+      } else {
+        console.log('Peer connection not ready, queuing ICE Candidate.');
+        iceCandidateQueue.current.push(candidate);
       }
+      // }
     });
 
     if (!isLocalStream) {
