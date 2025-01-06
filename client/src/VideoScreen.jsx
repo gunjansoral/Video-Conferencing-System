@@ -82,6 +82,8 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
       console.log(`ice-candidate-on event received :`, data);
       const userId = data.toUserId;
       const candidate = data.candidate;
+
+      console.log(userId, participant.userId, userId === participant.userId)
       if (userId === participant.userId) {
         console.log(`ICE Candidate received from ${userId}`);
         if (peerConnection.current) {
