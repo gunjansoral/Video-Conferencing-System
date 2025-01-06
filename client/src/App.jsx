@@ -14,18 +14,26 @@ function App() {
             {
                 urls: 'stun:stun.l.google.com:19302', // Google's free STUN server
             },
+            // Optional: Add TURN server for NAT traversal (use a reliable service like Twilio or Xirsys)
+            // {
+            //     urls: 'turn:your-turn-server.com:3478',
+            //     username: 'your-username',
+            //     credential: 'your-credential',
+            // },
         ],
     };
 
     useEffect(() => {
         // Set userId on initial connection
         socket.on('connect', () => {
+            console.log('Socket connected:', socket.id);
             setUserId(socket.id); // Set the unique socket ID as userId
         });
 
         // Handle incoming WebRTC signaling messages
         socket.on('offer', async (data) => {
             try {
+                console.log('Offer received:', data);
                 if (!peerConnection.current) {
                     createPeerConnection(); // Ensure peer connection is initialized
                 }
@@ -35,6 +43,7 @@ function App() {
                 await peerConnection.current.setLocalDescription(answer);
 
                 socket.emit('answer', { answer });
+                console.log('Answer sent');
             } catch (error) {
                 console.error('Error handling offer:', error);
             }
@@ -42,6 +51,7 @@ function App() {
 
         socket.on('answer', async (data) => {
             try {
+                console.log('Answer received:', data);
                 await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
             } catch (error) {
                 console.error('Error handling answer:', error);
@@ -50,9 +60,10 @@ function App() {
 
         socket.on('ice-candidate', async (data) => {
             try {
+                console.log('ICE Candidate received:', data);
                 await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
             } catch (error) {
-                console.error('Error adding received ice candidate:', error);
+                console.error('Error adding received ICE candidate:', error);
             }
         });
 
@@ -70,6 +81,7 @@ function App() {
 
         // Handle remote stream
         peerConnection.current.ontrack = (event) => {
+            console.log('Remote stream received:', event.streams[0]);
             const [remoteStream] = event.streams;
             if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = remoteStream;
@@ -79,8 +91,18 @@ function App() {
         // Handle ICE candidates
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('Sending ICE Candidate:', event.candidate);
                 socket.emit('ice-candidate', { candidate: event.candidate });
             }
+        };
+
+        // Log connection state changes
+        peerConnection.current.oniceconnectionstatechange = () => {
+            console.log('ICE Connection State:', peerConnection.current.iceConnectionState);
+        };
+
+        peerConnection.current.onconnectionstatechange = () => {
+            console.log('Peer Connection State:', peerConnection.current.connectionState);
         };
     };
 
@@ -91,6 +113,8 @@ function App() {
                 video: true,
                 audio: true,
             });
+
+            console.log('Local stream acquired:', stream);
 
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
@@ -105,6 +129,7 @@ function App() {
             setConnected(true);
 
             // Emit join-room event with roomId and userId
+            console.log(`Joining room: ${roomId} with userId: ${userId}`);
             socket.emit('join-room', roomId, userId);
 
             // Create and send an offer
@@ -112,6 +137,7 @@ function App() {
             await peerConnection.current.setLocalDescription(offer);
 
             socket.emit('offer', { offer });
+            console.log('Offer sent');
         } catch (error) {
             console.error('Error accessing media devices:', error);
 
