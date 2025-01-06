@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: '*', // React app ka URL
+        origin: 'https://video-conferencing-system-frontend.onrender.com', // React app ka URL
         // origin: 'http://localhost:5173', // React app ka URL
         methods: ['GET', 'POST']
     }
