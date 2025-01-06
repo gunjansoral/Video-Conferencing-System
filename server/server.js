@@ -44,6 +44,10 @@ io.on('connection', (socket) => {
     });
 });
 
+app.get('/', (req, res) => {
+    res.send('Server is running');
+})
+
 
 const PORT = 5000;
 server.listen(PORT, () => {
