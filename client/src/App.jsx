@@ -23,9 +23,23 @@ function App() {
             setUserId(socket.id);
         });
 
-        // Handle when a new user connects to the room
+        // Listen for updates to participants
+        socket.on('update-participants', (updatedParticipants) => {
+            console.log('Updated participants from server:', updatedParticipants);
+            setParticipants((prev) => {
+                // Check if there are any changes in participants
+                const newParticipants = updatedParticipants.map((id) => {
+                    const existingParticipant = prev.find((p) => p.userId === id);
+                    return existingParticipant || { userId: id, stream: null };
+                });
+                console.log('Updated participants in state:', newParticipants);
+                return newParticipants;
+            });
+        });
+
+        // Handle when a user connects
         socket.on('user-connected', (newUserId) => {
-            console.log(`New user connected: ${newUserId}`);
+            console.log(`User connected: ${newUserId}`);
             createPeerConnection(newUserId, true); // Create a new peer connection
         });
 
@@ -36,11 +50,6 @@ function App() {
                 peerConnections.current[disconnectedUserId].close();
                 delete peerConnections.current[disconnectedUserId];
             }
-            setParticipants((prev) => {
-                const updatedParticipants = prev.filter((p) => p.userId !== disconnectedUserId);
-                console.log('Updated participants after disconnect:', updatedParticipants);
-                return updatedParticipants;
-            });
         });
 
         // Handle WebRTC signaling
@@ -77,6 +86,7 @@ function App() {
 
         return () => {
             socket.off('connect');
+            socket.off('update-participants');
             socket.off('user-connected');
             socket.off('user-disconnected');
             socket.off('offer');
@@ -146,16 +156,6 @@ function App() {
             });
             localStream.current = stream;
 
-            // Add yourself to participants
-            setParticipants((prev) => {
-                const updatedParticipants = [
-                    ...prev,
-                    { userId, stream: localStream.current, isLocal: true },
-                ];
-                console.log('Updated participants after joinRoom:', updatedParticipants);
-                return updatedParticipants;
-            });
-
             // Notify server
             socket.emit('join-room', roomId, userId);
 
@@ -163,27 +163,6 @@ function App() {
         } catch (error) {
             console.error('Error accessing media devices:', error);
         }
-    };
-
-    const leaveRoom = () => {
-        // Close peer connections
-        Object.values(peerConnections.current).forEach((peerConnection) => {
-            peerConnection.close();
-        });
-        peerConnections.current = {};
-
-        // Stop local stream
-        if (localStream.current) {
-            localStream.current.getTracks().forEach((track) => track.stop());
-            localStream.current = null;
-        }
-
-        // Notify server
-        socket.emit('leave-room', { roomId, userId });
-
-        // Reset state
-        setParticipants([]);
-        setConnected(false);
     };
 
     return (
@@ -221,20 +200,6 @@ function App() {
                             <VideoScreen key={participant.userId} participant={participant} />
                         ))}
                     </div>
-                    <button
-                        onClick={leaveRoom}
-                        style={{
-                            marginTop: '20px',
-                            padding: '10px 20px',
-                            fontSize: '16px',
-                            backgroundColor: 'red',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                        }}
-                    >
-                        Leave Room
-                    </button>
                 </div>
             )}
         </div>

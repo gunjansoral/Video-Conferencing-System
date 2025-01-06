@@ -34,6 +34,9 @@ io.on('connection', (socket) => {
         // Notify other participants in the room
         socket.broadcast.to(roomId).emit('user-connected', userId);
 
+        // Notify all clients in the room about the updated participants
+        io.to(roomId).emit('update-participants', rooms[roomId]);
+
         console.log(`Users in room ${roomId}:`, rooms[roomId]);
 
         // Relay offer to other participants
@@ -67,6 +70,9 @@ io.on('connection', (socket) => {
                     delete rooms[roomId];
                 }
             }
+
+            // Notify all clients in the room about the updated participants
+            io.to(roomId).emit('update-participants', rooms[roomId]);
 
             socket.broadcast.to(roomId).emit('user-disconnected', userId);
             console.log(`Users in room ${roomId} after disconnection:`, rooms[roomId]);
