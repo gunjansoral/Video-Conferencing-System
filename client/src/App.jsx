@@ -5,9 +5,8 @@ function App() {
     const [roomId, setRoomId] = useState('');
     const [userId, setUserId] = useState('');
     const [connected, setConnected] = useState(false);
-    const localVideoRef = useRef(null);
-    const remoteVideoRef = useRef(null);
-    const peerConnection = useRef(null);
+    const [participants, setParticipants] = useState([]); // Store all participants and their streams
+    const peerConnections = useRef({}); // Store peer connections for each user
     const localStream = useRef(null); // Store the local stream
 
     const configuration = {
@@ -25,82 +24,111 @@ function App() {
             setUserId(socket.id); // Set the unique socket ID as userId
         });
 
+        // Handle user joining the room
+        socket.on('user-connected', (newUserId) => {
+            console.log(`${newUserId} joined the room.`);
+            createPeerConnection(newUserId, true);
+        });
+
+        // Handle user leaving the room
+        socket.on('user-disconnected', (disconnectedUserId) => {
+            console.log(`${disconnectedUserId} left the room.`);
+            if (peerConnections.current[disconnectedUserId]) {
+                peerConnections.current[disconnectedUserId].close();
+                delete peerConnections.current[disconnectedUserId];
+            }
+            setParticipants((prev) =>
+                prev.filter((participant) => participant.userId !== disconnectedUserId)
+            );
+        });
+
         // Handle incoming WebRTC signaling messages
-        socket.on('offer', async (data) => {
-            try {
-                console.log('Offer received:', data);
-                if (!peerConnection.current) {
-                    createPeerConnection(); // Ensure peer connection is initialized
-                }
+        socket.on('offer', async ({ fromUserId, offer }) => {
+            console.log(`Offer received from ${fromUserId}`);
+            createPeerConnection(fromUserId, false);
 
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await peerConnection.current.createAnswer();
-                await peerConnection.current.setLocalDescription(answer);
+            await peerConnections.current[fromUserId].setRemoteDescription(
+                new RTCSessionDescription(offer)
+            );
+            const answer = await peerConnections.current[fromUserId].createAnswer();
+            await peerConnections.current[fromUserId].setLocalDescription(answer);
 
-                socket.emit('answer', { answer });
-                console.log('Answer sent');
-            } catch (error) {
-                console.error('Error handling offer:', error);
-            }
+            socket.emit('answer', { toUserId: fromUserId, answer });
+            console.log('Answer sent');
         });
 
-        socket.on('answer', async (data) => {
-            try {
-                console.log('Answer received:', data);
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-            } catch (error) {
-                console.error('Error handling answer:', error);
-            }
+        socket.on('answer', async ({ fromUserId, answer }) => {
+            console.log(`Answer received from ${fromUserId}`);
+            await peerConnections.current[fromUserId].setRemoteDescription(
+                new RTCSessionDescription(answer)
+            );
         });
 
-        socket.on('ice-candidate', async (data) => {
+        socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
+            console.log(`ICE Candidate received from ${fromUserId}`);
             try {
-                console.log('ICE Candidate received:', data);
-                await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+                await peerConnections.current[fromUserId].addIceCandidate(
+                    new RTCIceCandidate(candidate)
+                );
             } catch (error) {
-                console.error('Error adding received ICE candidate:', error);
+                console.error('Error adding ICE Candidate:', error);
             }
         });
 
         return () => {
             // Cleanup event listeners when component unmounts
             socket.off('connect');
+            socket.off('user-connected');
+            socket.off('user-disconnected');
             socket.off('offer');
             socket.off('answer');
             socket.off('ice-candidate');
         };
     }, []);
 
-    const createPeerConnection = () => {
-        peerConnection.current = new RTCPeerConnection(configuration);
+    const createPeerConnection = (newUserId, isInitiator) => {
+        const peerConnection = new RTCPeerConnection(configuration);
+
+        peerConnections.current[newUserId] = peerConnection;
 
         // Handle remote stream
-        peerConnection.current.ontrack = (event) => {
+        peerConnection.ontrack = (event) => {
             console.log('Remote track received:', event.streams[0]);
             const [remoteStream] = event.streams;
-            if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = remoteStream;
-                console.log('Remote stream attached to video element.');
-            }
+
+            setParticipants((prev) => {
+                const existingUser = prev.find((p) => p.userId === newUserId);
+                if (!existingUser) {
+                    return [...prev, { userId: newUserId, stream: remoteStream }];
+                }
+                return prev;
+            });
         };
 
         // Handle ICE candidates
-        peerConnection.current.onicecandidate = (event) => {
+        peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log('Sending ICE Candidate:', event.candidate);
-                socket.emit('ice-candidate', { candidate: event.candidate });
+                console.log(`Sending ICE Candidate to ${newUserId}`);
+                socket.emit('ice-candidate', { toUserId: newUserId, candidate: event.candidate });
             }
         };
 
-        // Debug ICE connection state
-        peerConnection.current.oniceconnectionstatechange = () => {
-            console.log('ICE Connection State:', peerConnection.current.iceConnectionState);
-        };
+        // If the local stream exists, add tracks to the peer connection
+        if (localStream.current) {
+            localStream.current.getTracks().forEach((track) => peerConnection.addTrack(track, localStream.current));
+        }
 
-        // Debug Peer connection state
-        peerConnection.current.onconnectionstatechange = () => {
-            console.log('Peer Connection State:', peerConnection.current.connectionState);
-        };
+        // If initiating the connection, create and send an offer
+        if (isInitiator) {
+            peerConnection
+                .createOffer()
+                .then((offer) => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    socket.emit('offer', { toUserId: newUserId, offer: peerConnection.localDescription });
+                    console.log(`Offer sent to ${newUserId}`);
+                })
+                .catch((error) => console.error('Error creating offer:', error));
+        }
     };
 
     const joinRoom = async () => {
@@ -116,29 +144,13 @@ function App() {
             // Store local stream
             localStream.current = stream;
 
-            if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream;
-                console.log('Local stream attached to video element.');
-            }
-
-            // Initialize peer connection
-            createPeerConnection();
-
-            // Add local tracks to peer connection
-            stream.getTracks().forEach((track) => peerConnection.current.addTrack(track, stream));
-
-            setConnected(true);
+            setParticipants((prev) => [...prev, { userId, stream }]); // Add self to participants
 
             // Emit join-room event with roomId and userId
             console.log(`Joining room: ${roomId} with userId: ${userId}`);
             socket.emit('join-room', roomId, userId);
 
-            // Create and send an offer
-            const offer = await peerConnection.current.createOffer();
-            await peerConnection.current.setLocalDescription(offer);
-
-            socket.emit('offer', { offer });
-            console.log('Offer sent');
+            setConnected(true);
         } catch (error) {
             console.error('Error accessing media devices:', error);
 
@@ -153,11 +165,9 @@ function App() {
     };
 
     const leaveRoom = () => {
-        // Close peer connection
-        if (peerConnection.current) {
-            peerConnection.current.close();
-            peerConnection.current = null;
-        }
+        // Close all peer connections
+        Object.values(peerConnections.current).forEach((peerConnection) => peerConnection.close());
+        peerConnections.current = {};
 
         // Stop local stream tracks
         if (localStream.current) {
@@ -168,6 +178,7 @@ function App() {
         // Notify the server
         socket.emit('leave-room', { roomId, userId });
 
+        setParticipants([]);
         setConnected(false);
         console.log('Left the room');
     };
@@ -195,20 +206,32 @@ function App() {
                 <div>
                     <h2>Room: {roomId}</h2>
                     <h3>Your ID: {userId}</h3>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
-                        <video
-                            ref={localVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            style={{ width: '45%', border: '1px solid black' }}
-                        />
-                        <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            style={{ width: '45%', border: '1px solid black' }}
-                        />
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '20px',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        {participants.map((participant) => (
+                            <video
+                                key={participant.userId}
+                                ref={(video) => {
+                                    if (video && participant.stream) {
+                                        video.srcObject = participant.stream;
+                                    }
+                                }}
+                                autoPlay
+                                muted={participant.userId === userId} // Mute your own video
+                                playsInline
+                                style={{
+                                    width: '200px',
+                                    height: '150px',
+                                    border: '1px solid black',
+                                }}
+                            />
+                        ))}
                     </div>
                     <button
                         onClick={leaveRoom}
