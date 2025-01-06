@@ -17,27 +17,30 @@ function App() {
     };
 
     useEffect(() => {
+        // Handle socket connection
         socket.on('connect', () => {
             console.log('Socket connected:', socket.id);
             setUserId(socket.id);
         });
 
-        // Handle when a new user joins the room
+        // Handle when a new user connects to the room
         socket.on('user-connected', (newUserId) => {
-            console.log(`${newUserId} joined the room.`);
-            createPeerConnection(newUserId, true);
+            console.log(`New user connected: ${newUserId}`);
+            createPeerConnection(newUserId, true); // Create a new peer connection
         });
 
-        // Handle when a user leaves the room
+        // Handle when a user disconnects
         socket.on('user-disconnected', (disconnectedUserId) => {
-            console.log(`${disconnectedUserId} left the room.`);
+            console.log(`User disconnected: ${disconnectedUserId}`);
             if (peerConnections.current[disconnectedUserId]) {
                 peerConnections.current[disconnectedUserId].close();
                 delete peerConnections.current[disconnectedUserId];
             }
-            setParticipants((prev) =>
-                prev.filter((participant) => participant.userId !== disconnectedUserId)
-            );
+            setParticipants((prev) => {
+                const updatedParticipants = prev.filter((p) => p.userId !== disconnectedUserId);
+                console.log('Updated participants after disconnect:', updatedParticipants);
+                return updatedParticipants;
+            });
         });
 
         // Handle WebRTC signaling
@@ -52,7 +55,6 @@ function App() {
             await peerConnections.current[fromUserId].setLocalDescription(answer);
 
             socket.emit('answer', { toUserId: fromUserId, answer });
-            console.log('Answer sent');
         });
 
         socket.on('answer', async ({ fromUserId, answer }) => {
@@ -94,11 +96,12 @@ function App() {
             const [remoteStream] = event.streams;
 
             setParticipants((prev) => {
-                const existingParticipant = prev.find((p) => p.userId === newUserId);
-                if (!existingParticipant) {
-                    return [...prev, { userId: newUserId, stream: remoteStream }];
-                }
-                return prev;
+                const updatedParticipants = [
+                    ...prev.filter((p) => p.userId !== newUserId),
+                    { userId: newUserId, stream: remoteStream },
+                ];
+                console.log('Updated participants after track event:', updatedParticipants);
+                return updatedParticipants;
             });
         };
 
@@ -112,14 +115,14 @@ function App() {
             }
         };
 
-        // Add local stream tracks
+        // Add local stream tracks to the peer connection
         if (localStream.current) {
             localStream.current.getTracks().forEach((track) =>
                 peerConnection.addTrack(track, localStream.current)
             );
         }
 
-        // If initiator, create and send an offer
+        // If initiating the connection, send an offer
         if (isInitiator) {
             peerConnection
                 .createOffer()
@@ -144,10 +147,14 @@ function App() {
             localStream.current = stream;
 
             // Add yourself to participants
-            setParticipants((prev) => [
-                ...prev,
-                { userId, stream: localStream.current },
-            ]);
+            setParticipants((prev) => {
+                const updatedParticipants = [
+                    ...prev,
+                    { userId, stream: localStream.current, isLocal: true },
+                ];
+                console.log('Updated participants after joinRoom:', updatedParticipants);
+                return updatedParticipants;
+            });
 
             // Notify server
             socket.emit('join-room', roomId, userId);
@@ -234,4 +241,4 @@ function App() {
     );
 }
 
-export default App
+export default App;
