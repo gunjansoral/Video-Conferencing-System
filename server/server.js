@@ -26,8 +26,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        console.log(`${userId} is joining room: ${roomId}`);
-
         if (!rooms[roomId]) {
             rooms[roomId] = [];
         }
@@ -38,22 +36,24 @@ io.on('connection', (socket) => {
         socket.join(roomId);
 
         io.to(roomId).emit('update-participants', rooms[roomId]);
-        console.log(`Current users in room ${roomId}:`, rooms[roomId]);
+        console.log(`Users in room ${roomId}:`, rooms[roomId]);
 
-        // Forward WebRTC signaling events
         socket.on('offer', (data) => {
-            console.log(`Offer from ${data.userId} in room ${roomId}`);
             socket.broadcast.to(roomId).emit('offer', data);
         });
 
         socket.on('answer', (data) => {
-            console.log(`Answer from ${data.userId} in room ${roomId}`);
             socket.broadcast.to(roomId).emit('answer', data);
         });
 
         socket.on('ice-candidate', (data) => {
-            console.log(`ICE Candidate from ${data.userId} in room ${roomId}`);
-            socket.broadcast.to(roomId).emit('ice-candidate', data);
+            console.log('showing ice-candidate-on event', data)
+            if (data && data.candidate) {
+                console.log(`Relaying ICE Candidate from ${data.userId} in room ${roomId}`);
+                socket.broadcast.to(roomId).emit('ice-candidate', data);
+            } else {
+                console.warn('Invalid ICE candidate received:', data);
+            }
         });
 
         socket.on('disconnect', () => {
@@ -67,11 +67,6 @@ io.on('connection', (socket) => {
             io.to(roomId).emit('update-participants', rooms[roomId]);
         });
     });
-});
-
-// Health check
-app.get('/', (req, res) => {
-    res.send('Server is running');
 });
 
 const PORT = 5000;

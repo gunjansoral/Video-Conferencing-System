@@ -4,6 +4,7 @@ import socket from './socket';
 const VideoScreen = ({ participant, isLocalStream, localStream }) => {
   const videoRef = useRef(null);
   const peerConnection = useRef(null);
+  const iceCandidateQueue = useRef([]); // Queue for ICE candidates received before connection is ready
 
   const configuration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], // STUN server for NAT traversal
@@ -11,17 +12,14 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
 
   useEffect(() => {
     if (isLocalStream) {
-      // Local stream: Directly attach the stream to the video element
       if (videoRef.current && localStream) {
         videoRef.current.srcObject = localStream;
       }
     } else {
-      // Remote stream: Establish WebRTC connection
       setupPeerConnection();
     }
 
     return () => {
-      // Cleanup peer connection on unmount
       if (peerConnection.current) {
         peerConnection.current.close();
         peerConnection.current = null;
@@ -42,6 +40,7 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
 
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`Generated ICE Candidate for ${participant.userId}`);
         socket.emit('ice-candidate', {
           toUserId: participant.userId,
           candidate: event.candidate,
@@ -49,7 +48,14 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
       }
     };
 
-    // Listen for WebRTC signaling events
+    // Process queued ICE candidates once peer connection is ready
+    iceCandidateQueue.current.forEach((candidate) => {
+      console.log(`Adding queued ICE Candidate for ${participant.userId}`);
+      peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+    iceCandidateQueue.current = []; // Clear queue
+
+    // Handle signaling events
     socket.on('offer', async ({ fromUserId, offer }) => {
       if (fromUserId === participant.userId) {
         console.log(`Offer received from ${fromUserId}`);
@@ -72,17 +78,22 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
     });
 
     socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
+      console.log(`ice-candidate-on event received from ${fromUserId} with ${candidate}`);
       if (fromUserId === participant.userId) {
         console.log(`ICE Candidate received from ${fromUserId}`);
-        try {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (error) {
-          console.error('Error adding ICE Candidate:', error);
+        if (peerConnection.current) {
+          try {
+            await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (error) {
+            console.error('Error adding ICE Candidate:', error);
+          }
+        } else {
+          console.log('Peer connection not ready, queuing ICE Candidate.');
+          iceCandidateQueue.current.push(candidate);
         }
       }
     });
 
-    // Initiate connection if this is the caller
     if (!isLocalStream) {
       localStream.getTracks().forEach((track) => {
         peerConnection.current.addTrack(track, localStream);
@@ -107,7 +118,7 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isLocalStream} // Mute local participant video
+        muted={isLocalStream}
         style={{
           width: '200px',
           height: '150px',
