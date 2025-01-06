@@ -21,13 +21,19 @@ io.on('connection', (socket) => {
     console.log(`New user connected: ${socket.id}`);
 
     socket.on('join-room', (roomId, userId) => {
+        if (!userId || !roomId) {
+            console.warn('Invalid userId or roomId. Ignoring join request.');
+            return;
+        }
         console.log(`${userId} is joining room: ${roomId}`);
 
-        // Add user to the room
+        // Add user to the room if not already present
         if (!rooms[roomId]) {
             rooms[roomId] = [];
         }
-        rooms[roomId].push(userId);
+        if (!rooms[roomId].includes(userId)) {
+            rooms[roomId].push(userId);
+        }
 
         socket.join(roomId);
 
@@ -41,20 +47,32 @@ io.on('connection', (socket) => {
 
         // Relay offer to other participants
         socket.on('offer', (data) => {
-            console.log(`Offer from ${data.userId} in room ${roomId}`);
-            socket.broadcast.to(roomId).emit('offer', data);
+            if (data?.userId && data?.offer) {
+                console.log(`Offer from ${data.userId} in room ${roomId}`);
+                socket.broadcast.to(roomId).emit('offer', data);
+            } else {
+                console.warn('Invalid offer data received:', data);
+            }
         });
 
         // Relay answer to other participants
         socket.on('answer', (data) => {
-            console.log(`Answer from ${data.userId} in room ${roomId}`);
-            socket.broadcast.to(roomId).emit('answer', data);
+            if (data?.userId && data?.answer) {
+                console.log(`Answer from ${data.userId} in room ${roomId}`);
+                socket.broadcast.to(roomId).emit('answer', data);
+            } else {
+                console.warn('Invalid answer data received:', data);
+            }
         });
 
         // Relay ICE candidates to other participants
         socket.on('ice-candidate', (data) => {
-            console.log(`ICE Candidate from ${data.userId} in room ${roomId}`);
-            socket.broadcast.to(roomId).emit('ice-candidate', data);
+            if (data?.userId && data?.candidate) {
+                console.log(`ICE Candidate from ${data.userId} in room ${roomId}`);
+                socket.broadcast.to(roomId).emit('ice-candidate', data);
+            } else {
+                console.warn('Invalid ICE candidate data received:', data);
+            }
         });
 
         // Handle user disconnection
@@ -76,6 +94,27 @@ io.on('connection', (socket) => {
 
             socket.broadcast.to(roomId).emit('user-disconnected', userId);
             console.log(`Users in room ${roomId} after disconnection:`, rooms[roomId]);
+        });
+
+        // Clean up event listeners on socket disconnect
+        socket.on('leave-room', () => {
+            console.log(`${userId} manually left room ${roomId}`);
+            socket.leave(roomId);
+
+            // Remove user from the room
+            if (rooms[roomId]) {
+                rooms[roomId] = rooms[roomId].filter((id) => id !== userId);
+
+                // If the room is empty, delete it
+                if (rooms[roomId].length === 0) {
+                    delete rooms[roomId];
+                }
+            }
+
+            // Notify all clients in the room about the updated participants
+            io.to(roomId).emit('update-participants', rooms[roomId]);
+
+            socket.broadcast.to(roomId).emit('user-disconnected', userId);
         });
     });
 });
