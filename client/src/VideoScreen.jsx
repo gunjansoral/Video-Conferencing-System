@@ -79,7 +79,7 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
 
     socket.on('ice-candidate', async (data) => {
 
-      console.log(`ice-candidate-on event received :`, data);
+      console.log(`ice-candidate-on event received :`, data, peerConnection.current);
       const userId = data.toUserId;
       const candidate = data.candidate;
       if (userId === participant.userId) {
