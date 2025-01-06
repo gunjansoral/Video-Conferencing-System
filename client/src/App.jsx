@@ -70,6 +70,7 @@ function App() {
                 await peerConnections.current[fromUserId].addIceCandidate(
                     new RTCIceCandidate(candidate)
                 );
+
             } catch (error) {
                 console.error('Error adding ICE Candidate:', error);
             }
