@@ -80,8 +80,10 @@ const VideoScreen = ({ participant, isLocalStream, localStream }) => {
     socket.on('ice-candidate', async (data) => {
 
       console.log(`ice-candidate-on event received :`, data);
-      if (data.userId === participant.userId) {
-        console.log(`ICE Candidate received from ${data.userId}`);
+      const userId = data.toUserId;
+      const candidate = data.candidate;
+      if (userId === participant.userId) {
+        console.log(`ICE Candidate received from ${userId}`);
         if (peerConnection.current) {
           try {
             await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
