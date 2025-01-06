@@ -3,6 +3,7 @@ import socket from './socket';
 
 function App() {
     const [roomId, setRoomId] = useState('');
+    const [userId, setUserId] = useState('');
     const [connected, setConnected] = useState(false);
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
@@ -17,29 +18,71 @@ function App() {
     };
 
     useEffect(() => {
-        // Handle WebRTC signaling
-        socket.on('offer', async (data) => {
-            await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnection.current.createAnswer();
-            await peerConnection.current.setLocalDescription(answer);
+        // Set userId on initial connection
+        socket.on('connect', () => {
+            setUserId(socket.id); // Set the unique socket ID as userId
+        });
 
-            socket.emit('answer', {
-                answer,
-            });
+        // Handle incoming WebRTC signaling messages
+        socket.on('offer', async (data) => {
+            try {
+                if (!peerConnection.current) {
+                    createPeerConnection(); // Ensure peer connection is initialized
+                }
+
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.current.createAnswer();
+                await peerConnection.current.setLocalDescription(answer);
+
+                socket.emit('answer', { answer });
+            } catch (error) {
+                console.error('Error handling offer:', error);
+            }
         });
 
         socket.on('answer', async (data) => {
-            await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            } catch (error) {
+                console.error('Error handling answer:', error);
+            }
         });
 
         socket.on('ice-candidate', async (data) => {
             try {
                 await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
             } catch (error) {
-                console.error('Error adding received ice candidate', error);
+                console.error('Error adding received ice candidate:', error);
             }
         });
+
+        return () => {
+            // Cleanup event listeners when component unmounts
+            socket.off('connect');
+            socket.off('offer');
+            socket.off('answer');
+            socket.off('ice-candidate');
+        };
     }, []);
+
+    const createPeerConnection = () => {
+        peerConnection.current = new RTCPeerConnection(configuration);
+
+        // Handle remote stream
+        peerConnection.current.ontrack = (event) => {
+            const [remoteStream] = event.streams;
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStream;
+            }
+        };
+
+        // Handle ICE candidates
+        peerConnection.current.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('ice-candidate', { candidate: event.candidate });
+            }
+        };
+    };
 
     const joinRoom = async () => {
         try {
@@ -48,55 +91,39 @@ function App() {
                 video: true,
                 audio: true,
             });
-    
-            // If the stream is available, assign it to the video element
+
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
             }
-    
-            // Create a new RTCPeerConnection
-            peerConnection.current = new RTCPeerConnection(configuration);
-    
-            // Add local stream tracks to the peer connection
+
+            // Initialize peer connection
+            createPeerConnection();
+
+            // Add local tracks to peer connection
             stream.getTracks().forEach((track) => peerConnection.current.addTrack(track, stream));
-    
-            // Handle ICE candidates
-            peerConnection.current.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', { candidate: event.candidate });
-                }
-            };
-    
+
             setConnected(true);
-            socket.emit('join-room', roomId);
-    
+
+            // Emit join-room event with roomId and userId
+            socket.emit('join-room', roomId, userId);
+
             // Create and send an offer
             const offer = await peerConnection.current.createOffer();
             await peerConnection.current.setLocalDescription(offer);
-    
+
             socket.emit('offer', { offer });
         } catch (error) {
             console.error('Error accessing media devices:', error);
-    
-            // Handle specific errors and display appropriate messages
+
             if (error.name === 'NotFoundError') {
-                alert(
-                    'No camera or microphone detected. Please connect a camera and microphone and try again.'
-                );
+                alert('No camera or microphone detected. Please connect and try again.');
             } else if (error.name === 'NotAllowedError') {
-                alert(
-                    'Access to camera and microphone was denied. Please allow permissions and refresh the page.'
-                );
-            } else if (error.name === 'NotReadableError') {
-                alert(
-                    'Your camera or microphone is currently in use by another application. Please close other apps and try again.'
-                );
+                alert('Access to camera/microphone denied. Please allow permissions and try again.');
             } else {
                 alert('An unexpected error occurred. Please try again.');
             }
         }
     };
-    
 
     return (
         <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -120,19 +147,20 @@ function App() {
             ) : (
                 <div>
                     <h2>Room: {roomId}</h2>
-                    <div>
+                    <h3>Your ID: {userId}</h3>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
                         <video
                             ref={localVideoRef}
                             autoPlay
                             muted
                             playsInline
-                            style={{ width: '45%', margin: '10px' }}
+                            style={{ width: '45%', border: '1px solid black' }}
                         />
                         <video
                             ref={remoteVideoRef}
                             autoPlay
                             playsInline
-                            style={{ width: '45%', margin: '10px' }}
+                            style={{ width: '45%', border: '1px solid black' }}
                         />
                     </div>
                 </div>
