@@ -4,7 +4,6 @@ const VideoScreen = ({ participant }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    // Assign the participant's stream to the video element
     if (videoRef.current && participant.stream) {
       videoRef.current.srcObject = participant.stream;
     }
@@ -16,7 +15,7 @@ const VideoScreen = ({ participant }) => {
         ref={videoRef}
         autoPlay
         playsInline
-        muted={participant.isLocal} // Mute local participant video
+        muted={participant.isLocal} // Mute local video
         style={{
           width: '200px',
           height: '150px',

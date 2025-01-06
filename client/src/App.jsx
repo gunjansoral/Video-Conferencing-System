@@ -6,52 +6,50 @@ function App() {
     const [roomId, setRoomId] = useState('');
     const [userId, setUserId] = useState('');
     const [connected, setConnected] = useState(false);
-    const [participants, setParticipants] = useState([]); // List of all participants
-    const peerConnections = useRef({}); // Store peer connections for each user
+    const [participants, setParticipants] = useState([]); // All participants with their streams
+    const peerConnections = useRef({}); // Store peer connections for each participant
     const localStream = useRef(null); // Local video/audio stream
 
     const configuration = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }, // Google's free STUN server
-        ],
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], // STUN server
     };
 
     useEffect(() => {
-        // Handle socket connection
         socket.on('connect', () => {
+            console.log('Socket connected:', socket.id);
             setUserId(socket.id);
         });
 
-        // Listen for updated participants
         socket.on('update-participants', (updatedParticipants) => {
-            setParticipants((prev) => {
-                const newParticipants = updatedParticipants.map((id) => {
+            console.log('Participants updated:', updatedParticipants);
+            setParticipants((prev) =>
+                updatedParticipants.map((id) => {
                     const existing = prev.find((p) => p.userId === id);
                     return existing || { userId: id, stream: null };
-                });
-                return newParticipants;
-            });
+                })
+            );
         });
 
-        // Handle WebRTC signaling
         socket.on('offer', async ({ fromUserId, offer }) => {
+            console.log(`Offer received from ${fromUserId}`);
             createPeerConnection(fromUserId, false);
             await peerConnections.current[fromUserId].setRemoteDescription(
                 new RTCSessionDescription(offer)
             );
             const answer = await peerConnections.current[fromUserId].createAnswer();
             await peerConnections.current[fromUserId].setLocalDescription(answer);
-
             socket.emit('answer', { toUserId: fromUserId, answer });
         });
 
         socket.on('answer', async ({ fromUserId, answer }) => {
+            console.log(`Answer received from ${fromUserId}`);
             await peerConnections.current[fromUserId].setRemoteDescription(
                 new RTCSessionDescription(answer)
             );
         });
 
         socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
+            console.log(`ICE Candidate received from ${fromUserId}`);
             await peerConnections.current[fromUserId].addIceCandidate(
                 new RTCIceCandidate(candidate)
             );
@@ -68,18 +66,18 @@ function App() {
 
     const createPeerConnection = (newUserId, isInitiator) => {
         const peerConnection = new RTCPeerConnection(configuration);
-
         peerConnections.current[newUserId] = peerConnection;
 
-        // Handle remote streams
         peerConnection.ontrack = (event) => {
             const [remoteStream] = event.streams;
+            console.log(`Stream received from ${newUserId}`);
             setParticipants((prev) =>
-                prev.map((p) => (p.userId === newUserId ? { ...p, stream: remoteStream } : p))
+                prev.map((p) =>
+                    p.userId === newUserId ? { ...p, stream: remoteStream } : p
+                )
             );
         };
 
-        // Handle ICE candidates
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
                 socket.emit('ice-candidate', {
@@ -89,40 +87,48 @@ function App() {
             }
         };
 
-        // Add local stream tracks to the peer connection
         if (localStream.current) {
             localStream.current.getTracks().forEach((track) =>
                 peerConnection.addTrack(track, localStream.current)
             );
         }
 
-        // If initiating the connection, send an offer
         if (isInitiator) {
-            peerConnection
-                .createOffer()
-                .then((offer) => peerConnection.setLocalDescription(offer))
-                .then(() => {
-                    socket.emit('offer', {
-                        toUserId: newUserId,
-                        offer: peerConnection.localDescription,
-                    });
+            peerConnection.createOffer().then((offer) => {
+                peerConnection.setLocalDescription(offer);
+                socket.emit('offer', {
+                    toUserId: newUserId,
+                    offer: peerConnection.localDescription,
                 });
+            });
         }
     };
 
     const joinRoom = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true,
+            });
             localStream.current = stream;
-
             setParticipants([{ userId, stream, isLocal: true }]);
-
             socket.emit('join-room', roomId, userId);
-
             setConnected(true);
         } catch (error) {
             console.error('Error accessing media devices:', error);
         }
+    };
+
+    const leaveRoom = () => {
+        Object.values(peerConnections.current).forEach((peerConnection) => peerConnection.close());
+        peerConnections.current = {};
+        if (localStream.current) {
+            localStream.current.getTracks().forEach((track) => track.stop());
+            localStream.current = null;
+        }
+        socket.emit('leave-room', { roomId, userId });
+        setParticipants([]);
+        setConnected(false);
     };
 
     return (
@@ -160,6 +166,20 @@ function App() {
                             <VideoScreen key={participant.userId} participant={participant} />
                         ))}
                     </div>
+                    <button
+                        onClick={leaveRoom}
+                        style={{
+                            marginTop: '20px',
+                            padding: '10px 20px',
+                            fontSize: '16px',
+                            backgroundColor: 'red',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '5px',
+                        }}
+                    >
+                        Leave Room
+                    </button>
                 </div>
             )}
         </div>
