@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import socket from "./socket";
-import Screen from "./Screen";
+import socket from "./socket"; // Import socket instance
+import Screen from "./Screen"; // Import Screen component
 
 const App = () => {
     const [localStream, setLocalStream] = useState(null);
@@ -11,6 +11,7 @@ const App = () => {
     const peerConnection = useRef(null);
 
     useEffect(() => {
+        // Socket event listeners
         socket.on("user-joined", async (userId) => {
             console.log(`User joined: ${userId}`);
             const offer = await peerConnection.current.createOffer();
@@ -18,39 +19,22 @@ const App = () => {
             socket.emit("signal", { signal: offer, to: userId });
         });
 
-        peerConnection.current.ontrack = (event) => {
-            if (event.streams && event.streams[0]) {
-                console.log("Remote stream received:", event.streams[0]);
-                setRemoteStream(event.streams[0]);
-            } else {
-                console.error("No streams found in ontrack event");
-            }
-        };
-
-        peerConnection.current.onicecandidate = (event) => {
-            if (event.candidate) {
-                console.log("ICE Candidate generated:", event.candidate);
-                socket.emit("signal", { signal: event.candidate, to: roomId });
-            }
-        };
-
         socket.on("signal", async ({ signal, from }) => {
             console.log("Signal received:", signal);
             if (signal.type === "offer") {
-                console.log("Processing offer from", from);
+                console.log("Processing offer...");
                 await peerConnection.current.setRemoteDescription(signal);
                 const answer = await peerConnection.current.createAnswer();
                 await peerConnection.current.setLocalDescription(answer);
                 socket.emit("signal", { signal: answer, to: from });
             } else if (signal.type === "answer") {
-                console.log("Processing answer from", from);
+                console.log("Processing answer...");
                 await peerConnection.current.setRemoteDescription(signal);
             } else if (signal.candidate) {
-                console.log("Adding ICE candidate from", from);
+                console.log("Adding ICE candidate...");
                 await peerConnection.current.addIceCandidate(signal);
             }
         });
-
 
         socket.on("user-left", (userId) => {
             console.log(`User left: ${userId}`);
@@ -91,11 +75,15 @@ const App = () => {
         });
 
         peerConnection.current.ontrack = (event) => {
-            setRemoteStream(event.streams[0]);
+            if (event.streams && event.streams[0]) {
+                console.log("Remote stream received.");
+                setRemoteStream(event.streams[0]);
+            }
         };
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log("ICE Candidate generated:", event.candidate);
                 socket.emit("signal", { signal: event.candidate, to: roomId });
             }
         };
@@ -113,6 +101,7 @@ const App = () => {
             socket.emit("leave-room", roomId);
             setConnected(false);
             setRemoteStream(null);
+            peerConnection.current.close(); // Close the PeerConnection
         }
     };
 
