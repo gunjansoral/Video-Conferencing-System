@@ -7,83 +7,45 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: 'https://video-conferencing-system-frontend.onrender.com', // Replace with your frontend URL
+        origin: '*',
         methods: ['GET', 'POST'],
     },
 });
 
 app.use(cors());
 
-// Room management
 const rooms = {};
 
 io.on('connection', (socket) => {
     console.log(`New user connected: ${socket.id}`);
 
-    // Join Room
-    socket.on('join-room', (roomId, userId) => {
-        if (!roomId || !userId) {
-            console.warn('Invalid roomId or userId. Join request ignored.');
-            return;
-        }
+    socket.on('join-room', (roomId) => {
+        if (!rooms[roomId]) rooms[roomId] = [];
+        rooms[roomId].push(socket.id);
 
-        if (!rooms[roomId]) {
-            rooms[roomId] = [];
-        }
-        if (!rooms[roomId].includes(userId)) {
-            rooms[roomId].push(userId);
-        }
-
+        console.log(`User ${socket.id} joined room ${roomId}`);
         socket.join(roomId);
+    });
 
-        io.to(roomId).emit('update-participants', rooms[roomId]);
-        console.log(`Users in room ${roomId}:`, rooms[roomId]);
+    socket.on('offer', (data) => {
+        socket.to(data.roomId).emit('offer', { offer: data.offer });
+    });
 
-        // Handle WebRTC signaling
-        socket.on('offer', (data) => socket.broadcast.to(roomId).emit('offer', data));
-        socket.on('answer', (data) => socket.broadcast.to(roomId).emit('answer', data));
-        socket.on('ice-candidate', (data) => {
-            if (data && data.candidate) {
-                console.log(`Relaying ICE Candidate from ${data.toUserId} in room ${roomId}`);
-                socket.broadcast.to(roomId).emit('ice-candidate', data);
-            } else {
-                console.warn('Invalid ICE candidate received:', data);
-            }
-        });
+    socket.on('answer', (data) => {
+        socket.to(data.roomId).emit('answer', { answer: data.answer });
+    });
 
-        // Leave Room
-        socket.on('leave-room', () => {
-            console.log(`${userId} left the room ${roomId}`);
-            if (rooms[roomId]) {
-                rooms[roomId] = rooms[roomId].filter((id) => id !== userId);
+    socket.on('candidate', (data) => {
+        socket.to(data.roomId).emit('candidate', { candidate: data.candidate });
+    });
 
-                // Notify other participants
-                io.to(roomId).emit('update-participants', rooms[roomId]);
+    socket.on('leave-room', (data) => {
+        socket.leave(data.roomId);
+        console.log(`User ${socket.id} left room ${data.roomId}`);
+    });
 
-                // If the room is empty, delete it
-                if (rooms[roomId].length === 0) {
-                    delete rooms[roomId];
-                }
-            }
-
-            socket.leave(roomId); // Remove user from the socket.io room
-        });
-
-        // Disconnect
-        socket.on('disconnect', () => {
-            console.log(`${userId} disconnected from room ${roomId}`);
-            if (rooms[roomId]) {
-                rooms[roomId] = rooms[roomId].filter((id) => id !== userId);
-
-                // Notify other participants
-                io.to(roomId).emit('update-participants', rooms[roomId]);
-
-                // If the room is empty, delete it
-                if (rooms[roomId].length === 0) {
-                    delete rooms[roomId];
-                }
-            }
-        });
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
     });
 });
 
