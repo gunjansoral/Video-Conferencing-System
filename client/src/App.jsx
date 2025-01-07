@@ -9,39 +9,41 @@ const App = () => {
     const [connected, setConnected] = useState(false);
 
     const peerConnection = useRef(null);
+    const targetUserId = useRef(null); // Store the target user's socket ID
 
     useEffect(() => {
         // Socket event listeners
         socket.on("user-joined", async (userId) => {
             console.log(`User joined: ${userId}`);
+            targetUserId.current = userId; // Save the joined user's ID
             const offer = await peerConnection.current.createOffer();
             await peerConnection.current.setLocalDescription(offer);
-            socket.emit("signal", { signal: offer, to: userId });
+            socket.emit("signal", { signal: offer, to: userId }); // Send offer to the joined user
         });
 
         socket.on("signal", async ({ signal, from }) => {
-            console.log("Signal received:", signal);
+            console.log("Signal received:", signal, "from:", from);
             if (signal.type === "offer") {
                 console.log("Processing offer...");
                 await peerConnection.current.setRemoteDescription(signal);
                 const answer = await peerConnection.current.createAnswer();
                 await peerConnection.current.setLocalDescription(answer);
-                socket.emit("signal", { signal: answer, to: from });
+                socket.emit("signal", { signal: answer, to: from }); // Send answer to the user who sent the offer
             } else if (signal.type === "answer") {
                 console.log("Processing answer...");
                 await peerConnection.current.setRemoteDescription(signal);
             } else if (signal.candidate) {
-                console.log("Adding ICE candidate:", signal.candidate); // Debug ICE candidate
+                console.log("Adding ICE candidate:", signal.candidate);
                 await peerConnection.current.addIceCandidate(signal.candidate);
             } else {
-                console.warn("Signal type not recognized:", signal);
+                console.warn("Unknown signal type received:", signal);
             }
         });
-
 
         socket.on("user-left", (userId) => {
             console.log(`User left: ${userId}`);
             setRemoteStream(null);
+            targetUserId.current = null; // Reset target user
         });
 
         return () => {
@@ -70,24 +72,24 @@ const App = () => {
 
     const initPeerConnection = (stream) => {
         peerConnection.current = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }], // Google STUN server
         });
 
         stream.getTracks().forEach((track) => {
-            peerConnection.current.addTrack(track, stream);
+            peerConnection.current.addTrack(track, stream); // Add local tracks to PeerConnection
         });
 
         peerConnection.current.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
                 console.log("Remote stream received.");
-                setRemoteStream(event.streams[0]);
+                setRemoteStream(event.streams[0]); // Set remote stream
             }
         };
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
                 console.log("ICE Candidate generated:", event.candidate);
-                socket.emit("signal", { signal: event.candidate, to: roomId });
+                socket.emit("signal", { signal: event.candidate, to: targetUserId.current }); // Send ICE candidate
             }
         };
     };
@@ -104,7 +106,14 @@ const App = () => {
             socket.emit("leave-room", roomId);
             setConnected(false);
             setRemoteStream(null);
-            peerConnection.current.close(); // Close the PeerConnection
+
+            // Close and reset the PeerConnection
+            if (peerConnection.current) {
+                peerConnection.current.ontrack = null;
+                peerConnection.current.onicecandidate = null;
+                peerConnection.current.close();
+                peerConnection.current = null;
+            }
         }
     };
 
