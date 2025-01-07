@@ -7,6 +7,7 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
   const [volume, setVolume] = useState(1);
 
   useEffect(() => {
+    console.log(stream)
     // Assign stream to the video element and play only when stream is ready
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
