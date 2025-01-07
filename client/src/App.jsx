@@ -31,10 +31,13 @@ const App = () => {
                 console.log("Processing answer...");
                 await peerConnection.current.setRemoteDescription(signal);
             } else if (signal.candidate) {
-                console.log("Adding ICE candidate...");
-                await peerConnection.current.addIceCandidate(signal);
+                console.log("Adding ICE candidate:", signal.candidate); // Debug ICE candidate
+                await peerConnection.current.addIceCandidate(signal.candidate);
+            } else {
+                console.warn("Signal type not recognized:", signal);
             }
         });
+
 
         socket.on("user-left", (userId) => {
             console.log(`User left: ${userId}`);
