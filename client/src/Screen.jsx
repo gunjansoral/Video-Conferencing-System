@@ -7,36 +7,57 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
   const [volume, setVolume] = useState(1);
 
   useEffect(() => {
+    // Assign stream to the video element and play only when stream is ready
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+
+      // Wait for metadata to load before playing
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current
+          .play()
+          .catch((error) => console.error("Error playing video:", error));
+      };
+    } else if (videoRef.current) {
+      // Clear video source if stream is null
+      videoRef.current.srcObject = null;
     }
+
+    return () => {
+      // Cleanup on component unmount
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
   }, [stream]);
 
+  useEffect(() => {
+    if (videoRef.current) {
+      // Synchronize video volume and mute state
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
+    }
+  }, [volume, isMuted]);
+
   const handleFullScreen = () => {
-    if (videoRef.current.requestFullscreen) {
-      videoRef.current.requestFullscreen();
-    } else if (videoRef.current.webkitRequestFullscreen) {
-      videoRef.current.webkitRequestFullscreen();
-    } else if (videoRef.current.mozRequestFullScreen) {
-      videoRef.current.mozRequestFullScreen();
-    } else if (videoRef.current.msRequestFullscreen) {
-      videoRef.current.msRequestFullscreen();
+    if (videoRef.current) {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      } else if (videoRef.current.webkitRequestFullscreen) {
+        videoRef.current.webkitRequestFullscreen();
+      } else if (videoRef.current.mozRequestFullScreen) {
+        videoRef.current.mozRequestFullScreen();
+      } else if (videoRef.current.msRequestFullscreen) {
+        videoRef.current.msRequestFullscreen();
+      }
     }
   };
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-    }
   };
 
   const handleVolumeChange = (e) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
-    }
+    setVolume(parseFloat(e.target.value));
   };
 
   const toggleCamera = () => {
@@ -45,25 +66,44 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsCameraOn(videoTrack.enabled);
+      } else {
+        console.warn("No video track available to toggle.");
       }
     }
   };
 
   return (
-    <div className={`screen-container ${className}`} style={{ position: "relative", textAlign: "center" }}>
+    <div
+      className={`screen-container ${className}`}
+      style={{ position: "relative", textAlign: "center" }}
+    >
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isMuted}
-        style={{ width: "100%", height: "auto", borderRadius: "10px" }}
+        style={{
+          width: "100%",
+          height: "auto",
+          borderRadius: "10px",
+          backgroundColor: "black", // Add a fallback background color
+        }}
       ></video>
 
-      <div className="controls" style={{ display: "flex", justifyContent: "space-around", marginTop: "10px" }}>
-        <button onClick={handleFullScreen} style={buttonStyle}>
+      <div
+        className="controls"
+        style={{
+          display: "flex",
+          justifyContent: "space-around",
+          marginTop: "10px",
+          backgroundColor: "rgba(0, 0, 0, 0.7)", // Add some styling for better UX
+          padding: "10px",
+          borderRadius: "5px",
+        }}
+      >
+        <button onClick={handleFullScreen} style={buttonStyle} title="Go Fullscreen">
           Full Screen
         </button>
-        <button onClick={toggleMute} style={buttonStyle}>
+        <button onClick={toggleMute} style={buttonStyle} title="Mute or Unmute">
           {isMuted ? "Unmute" : "Mute"}
         </button>
         <input
@@ -74,8 +114,9 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
           value={volume}
           onChange={handleVolumeChange}
           style={{ width: "100px", cursor: "pointer" }}
+          aria-label="Adjust Volume"
         />
-        <button onClick={toggleCamera} style={buttonStyle}>
+        <button onClick={toggleCamera} style={buttonStyle} title="Toggle Camera">
           {isCameraOn ? "Camera Off" : "Camera On"}
         </button>
       </div>
