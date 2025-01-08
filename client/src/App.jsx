@@ -20,32 +20,19 @@ const App = () => {
             await peerConnection.current.setLocalDescription(offer);
             socket.emit('signal', { signal: offer, to: userId });
         });
-        socket.on('signal', async ({ signal, from }) => {
-            console.log('Signal received:', signal, 'from:', from);
-
-            if (signal.type === 'offer') {
-                console.log('Processing offer...');
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
-                const answer = await peerConnection.current.createAnswer();
-                await peerConnection.current.setLocalDescription(answer);
-                socket.emit('signal', { signal: answer, to: from });
-            } else if (signal.type === 'answer') {
-                console.log('Processing answer...');
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
-            } else if (signal.candidate) {
+        socket.on("signal", async ({ signal, from }) => {
+            if (signal.candidate) {
+                console.log("Adding received ICE candidate:", signal.candidate);
                 try {
-                    console.log('Adding ICE candidate:', signal.candidate);
-
-                    // Ensure the candidate object is correctly structured
-                    const candidate = new RTCIceCandidate({
-                        candidate: signal.candidate,
-                        sdpMid: signal.sdpMid,
-                        sdpMLineIndex: signal.sdpMLineIndex,
-                    });
-
-                    await peerConnection.current.addIceCandidate(candidate);
+                    await peerConnection.current.addIceCandidate(
+                        new RTCIceCandidate({
+                            candidate: signal.candidate,
+                            sdpMid: signal.sdpMid,
+                            sdpMLineIndex: signal.sdpMLineIndex,
+                        })
+                    );
                 } catch (error) {
-                    console.error('Error adding ICE candidate:', error);
+                    console.error("Error adding ICE candidate:", error);
                 }
             }
         });
@@ -90,8 +77,10 @@ const App = () => {
         });
 
         stream.getTracks().forEach((track) => {
+            console.log("Adding local track:", track);
             peerConnection.current.addTrack(track, stream);
         });
+
 
         peerConnection.current.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
@@ -101,8 +90,8 @@ const App = () => {
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log('Generated ICE candidate:', event.candidate);
-                socket.emit('signal', {
+                console.log("Generated ICE candidate:", event.candidate);
+                socket.emit("signal", {
                     signal: {
                         candidate: event.candidate.candidate,
                         sdpMid: event.candidate.sdpMid,
@@ -110,6 +99,8 @@ const App = () => {
                     },
                     to: targetUserId.current,
                 });
+            } else {
+                console.log("All ICE candidates sent.");
             }
         };
 

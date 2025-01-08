@@ -7,29 +7,18 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
   const [volume, setVolume] = useState(1);
 
   useEffect(() => {
-    console.log(stream)
-    // Assign stream to the video element and play only when stream is ready
+    console.log("Stream in Screen component:", stream);
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
 
-      // Wait for metadata to load before playing
       videoRef.current.onloadedmetadata = () => {
-        videoRef.current
-          .play()
-          .catch((error) => console.error("Error playing video:", error));
+        videoRef.current.play().catch((error) =>
+          console.error("Error playing video:", error)
+        );
       };
-    } else if (videoRef.current) {
-      // Clear video source if stream is null
-      videoRef.current.srcObject = null;
     }
-
-    return () => {
-      // Cleanup on component unmount
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-    };
   }, [stream]);
+
 
   useEffect(() => {
     if (videoRef.current) {
