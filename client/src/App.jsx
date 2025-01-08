@@ -96,9 +96,13 @@ const App = () => {
 
         peerConnection.current.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
+                console.log("Remote stream received:", event.streams[0]);
                 setRemoteStream(event.streams[0]);
+            } else {
+                console.warn("No remote stream in ontrack event.");
             }
         };
+
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
