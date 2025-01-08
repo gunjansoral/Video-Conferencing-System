@@ -20,10 +20,22 @@ const App = () => {
             await peerConnection.current.setLocalDescription(offer);
             socket.emit('signal', { signal: offer, to: userId });
         });
-        socket.on("signal", async ({ signal, from }) => {
-            if (signal.candidate) {
-                console.log("Adding received ICE candidate:", signal.candidate);
+        socket.on('signal', async ({ signal, from }) => {
+            console.log('Signal received:', signal, 'from:', from);
+
+            if (signal.type === 'offer') {
+                console.log('Processing offer...');
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
+                const answer = await peerConnection.current.createAnswer();
+                await peerConnection.current.setLocalDescription(answer);
+                socket.emit('signal', { signal: answer, to: from });
+            } else if (signal.type === 'answer') {
+                console.log('Processing answer...');
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
+            } else if (signal.candidate) {
+                console.log('Adding ICE candidate:', signal.candidate);
                 try {
+                    // Ensure the candidate object is correctly structured
                     await peerConnection.current.addIceCandidate(
                         new RTCIceCandidate({
                             candidate: signal.candidate,
@@ -32,7 +44,7 @@ const App = () => {
                         })
                     );
                 } catch (error) {
-                    console.error("Error adding ICE candidate:", error);
+                    console.error('Error adding ICE candidate:', error);
                 }
             }
         });
