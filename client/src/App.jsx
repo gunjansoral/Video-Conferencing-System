@@ -20,21 +20,36 @@ const App = () => {
             await peerConnection.current.setLocalDescription(offer);
             socket.emit('signal', { signal: offer, to: userId });
         });
-
         socket.on('signal', async ({ signal, from }) => {
             console.log('Signal received:', signal, 'from:', from);
+
             if (signal.type === 'offer') {
-                targetUserId.current = from;
+                console.log('Processing offer...');
                 await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
                 const answer = await peerConnection.current.createAnswer();
                 await peerConnection.current.setLocalDescription(answer);
                 socket.emit('signal', { signal: answer, to: from });
             } else if (signal.type === 'answer') {
+                console.log('Processing answer...');
                 await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
             } else if (signal.candidate) {
-                await peerConnection.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                try {
+                    console.log('Adding ICE candidate:', signal.candidate);
+
+                    // Ensure the candidate object is correctly structured
+                    const candidate = new RTCIceCandidate({
+                        candidate: signal.candidate,
+                        sdpMid: signal.sdpMid,
+                        sdpMLineIndex: signal.sdpMLineIndex,
+                    });
+
+                    await peerConnection.current.addIceCandidate(candidate);
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error);
+                }
             }
         });
+
 
         socket.on('user-left', (userId) => {
             console.log(`User left: ${userId}`);
@@ -86,9 +101,18 @@ const App = () => {
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
-                socket.emit('signal', { signal: event.candidate, to: targetUserId.current });
+                console.log('Generated ICE candidate:', event.candidate);
+                socket.emit('signal', {
+                    signal: {
+                        candidate: event.candidate.candidate,
+                        sdpMid: event.candidate.sdpMid,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    },
+                    to: targetUserId.current,
+                });
             }
         };
+
     };
 
     const joinRoom = () => {
