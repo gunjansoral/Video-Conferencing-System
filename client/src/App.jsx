@@ -1,116 +1,109 @@
-import React, { useState, useEffect, useRef } from "react";
-import socket from "./socket"; // Import socket instance
-import Screen from "./Screen"; // Import Screen component
+// src/App.js
+
+import React, { useState, useEffect, useRef } from 'react';
+import socket from './socket';
+import Screen from './Screen';
 
 const App = () => {
     const [localStream, setLocalStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
-    const [roomId, setRoomId] = useState("");
+    const [roomId, setRoomId] = useState('');
     const [connected, setConnected] = useState(false);
-
     const peerConnection = useRef(null);
-    const targetUserId = useRef(null); // Store the target user's socket ID
+    const targetUserId = useRef(null);
 
     useEffect(() => {
-        // Socket event listeners
-        socket.on("user-joined", async (userId) => {
+        socket.on('user-joined', async (userId) => {
             console.log(`User joined: ${userId}`);
-            targetUserId.current = userId; // Save the joined user's ID
+            targetUserId.current = userId;
             const offer = await peerConnection.current.createOffer();
             await peerConnection.current.setLocalDescription(offer);
-            socket.emit("signal", { signal: offer, to: userId }); // Send offer to the joined user
+            socket.emit('signal', { signal: offer, to: userId });
         });
 
-        socket.on("signal", async ({ signal, from }) => {
-            console.log("Signal received:", signal, "from:", from);
-            if (signal.type === "offer") {
-                console.log("Processing offer...");
-                await peerConnection.current.setRemoteDescription(signal);
+        socket.on('signal', async ({ signal, from }) => {
+            console.log('Signal received:', signal, 'from:', from);
+            if (signal.type === 'offer') {
+                targetUserId.current = from;
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
                 const answer = await peerConnection.current.createAnswer();
                 await peerConnection.current.setLocalDescription(answer);
-                socket.emit("signal", { signal: answer, to: from }); // Send answer to the user who sent the offer
-            } else if (signal.type === "answer") {
-                console.log("Processing answer...");
-                await peerConnection.current.setRemoteDescription(signal);
+                socket.emit('signal', { signal: answer, to: from });
+            } else if (signal.type === 'answer') {
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
             } else if (signal.candidate) {
-                console.log("Adding ICE candidate:", signal.candidate);
-                await peerConnection.current.addIceCandidate(signal.candidate);
-            } else {
-                console.warn("Unknown signal type received:", signal);
+                await peerConnection.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
             }
         });
 
-        socket.on("user-left", (userId) => {
+        socket.on('user-left', (userId) => {
             console.log(`User left: ${userId}`);
             setRemoteStream(null);
-            targetUserId.current = null; // Reset target user
+            if (peerConnection.current) {
+                peerConnection.current.close();
+                peerConnection.current = null;
+            }
         });
 
         return () => {
-            socket.off("user-joined");
-            socket.off("signal");
-            socket.off("user-left");
+            socket.off('user-joined');
+            socket.off('signal');
+            socket.off('user-left');
         };
     }, []);
 
     useEffect(() => {
-        async function getLocalStream() {
+        const getLocalStream = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true,
                 });
                 setLocalStream(stream);
-                initPeerConnection(stream);
+                initializePeerConnection(stream);
             } catch (error) {
-                console.error("Error accessing media devices:", error);
+                console.error('Error accessing media devices:', error);
             }
-        }
+        };
 
         getLocalStream();
     }, []);
 
-    const initPeerConnection = (stream) => {
+    const initializePeerConnection = (stream) => {
         peerConnection.current = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }], // Google STUN server
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
         });
 
         stream.getTracks().forEach((track) => {
-            peerConnection.current.addTrack(track, stream); // Add local tracks to PeerConnection
+            peerConnection.current.addTrack(track, stream);
         });
 
         peerConnection.current.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
-                console.log("Remote stream received.");
-                setRemoteStream(event.streams[0]); // Set remote stream
+                setRemoteStream(event.streams[0]);
             }
         };
 
         peerConnection.current.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log("ICE Candidate generated:", event.candidate);
-                socket.emit("signal", { signal: event.candidate, to: targetUserId.current }); // Send ICE candidate
+                socket.emit('signal', { signal: event.candidate, to: targetUserId.current });
             }
         };
     };
 
     const joinRoom = () => {
         if (roomId && !connected) {
-            socket.emit("join-room", roomId);
+            socket.emit('join-room', roomId);
             setConnected(true);
         }
     };
 
     const leaveRoom = () => {
         if (roomId && connected) {
-            socket.emit("leave-room", roomId);
+            socket.emit('leave-room', roomId);
             setConnected(false);
             setRemoteStream(null);
-
-            // Close and reset the PeerConnection
             if (peerConnection.current) {
-                peerConnection.current.ontrack = null;
-                peerConnection.current.onicecandidate = null;
                 peerConnection.current.close();
                 peerConnection.current = null;
             }
@@ -134,7 +127,7 @@ const App = () => {
                     Leave Room
                 </button>
             </div>
-            <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
+            <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
                 {localStream && <Screen stream={localStream} isLocal={true} />}
                 {remoteStream && <Screen stream={remoteStream} isLocal={false} />}
             </div>
