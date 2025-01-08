@@ -18,6 +18,14 @@ const Screen = ({ stream, isLocal = true, className = "" }) => {
       };
     }
 
+
+  }, [stream]);
+
+  useEffect(() => {
+    if (stream) {
+      console.log("Video tracks in Screen component stream:", stream.getVideoTracks());
+      console.log("Audio tracks in Screen component stream:", stream.getAudioTracks());
+    }
   }, [stream]);
 
 

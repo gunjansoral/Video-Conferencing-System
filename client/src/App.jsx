@@ -98,8 +98,8 @@ const App = () => {
             try {
                 if (event.streams && event.streams[0]) {
                     console.log("Remote stream received:", event.streams[0]);
-                    console.log("Video tracks in remote stream:", event.streams[0].getVideoTracks());
-                    console.log("Audio tracks in remote stream:", event.streams[0].getAudioTracks());
+                    // console.log("Video tracks in remote stream:", event.streams[0].getVideoTracks());
+                    // console.log("Audio tracks in remote stream:", event.streams[0].getAudioTracks());
                     setRemoteStream(event.streams[0]);
                 } else {
                     console.warn("No remote stream found in ontrack event.");
