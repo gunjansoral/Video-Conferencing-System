@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import socket from "../socket";
 
 const useRemoteCameraStream = (peerConnection, targetUserId, setRemoteStream) => {
 
