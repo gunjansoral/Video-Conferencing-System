@@ -6,7 +6,6 @@ import Screen from './components/Screen';
 import { initializePeerConnection } from './services/peerConnection';
 import useLocalCameraStream from './hooks/useLocalCameraStream';
 import useRemoteCameraStream from './hooks/useRemoteCameraStream';
-import { joinRoom, leaveRoom } from './services/socketService';
 
 const App = () => {
     const [localStream, setLocalStream] = useState(null);
@@ -74,64 +73,26 @@ const App = () => {
         setLocalStream(stream);
         initializePeerConnection(stream, peerConnection);
     })
-    // const initializePeerConnection = (stream) => {
-    //     peerConnection.current = new RTCPeerConnection({
-    //         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    //     });
 
-    //     stream.getTracks().forEach((track) => {
-    //         console.log("Adding local track:", track);
-    //         peerConnection.current.addTrack(track, stream);
-    //     });
-
-
-    //     peerConnection.current.ontrack = (event) => {
-    //         try {
-    //             if (event.streams && event.streams[0]) {
-    //                 console.log("Remote stream received:", event.streams[0]);
-    //                 // console.log("Video tracks in remote stream:", event.streams[0].getVideoTracks());
-    //                 // console.log("Audio tracks in remote stream:", event.streams[0].getAudioTracks());
-    //                 setRemoteStream(event.streams[0]);
-    //             } else {
-    //                 console.warn("No remote stream found in ontrack event.");
-    //             }
-    //         } catch (error) {
-    //             console.log("ontrack error: ", error)
-    //         }
-    //     };
-
-
-
-    //     peerConnection.current.onicecandidate = (event) => {
-    //         if (event.candidate) {
-    //             console.log("Generated ICE candidate:", event.candidate);
-    //             socket.emit("signal", {
-    //                 signal: {
-    //                     candidate: event.candidate.candidate,
-    //                     sdpMid: event.candidate.sdpMid,
-    //                     sdpMLineIndex: event.candidate.sdpMLineIndex,
-    //                 },
-    //                 to: targetUserId.current,
-    //             });
-    //         } else {
-    //             console.log("All ICE candidates sent.");
-    //         }
-    //     };
-
-    // };
-
-    joinRoom(socket, roomId, connected, () => {
-        setConnected(true);
-    })
-
-    leaveRoom(socket, roomId, connected, () => {
-        setConnected(false);
-        setRemoteStream(null);
-        if (peerConnection.current) {
-            peerConnection.current.close();
-            peerConnection.current = null;
+    const joinRoom = () => {
+        if (roomId && !connected) {
+            socket.emit('join-room', roomId);
+            setConnected(true);
         }
-    })
+    }
+
+    const leaveRoom = () => {
+        if (roomId && connected) {
+            socket.emit('leave-room', roomId);
+            setConnected(false);
+            setRemoteStream(null);
+            if (peerConnection.current) {
+                peerConnection.current.close();
+                peerConnection.current = null;
+            }
+        }
+    }
+
 
     return (
         <div>
