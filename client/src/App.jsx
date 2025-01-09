@@ -120,11 +120,11 @@ const App = () => {
 
     // };
 
-    joinRoom(socket, roomId, () => {
+    joinRoom(socket, roomId, connected, () => {
         setConnected(true);
     })
 
-    leaveRoom(socket, roomId, () => {
+    leaveRoom(socket, roomId, connected, () => {
         setConnected(false);
         setRemoteStream(null);
         if (peerConnection.current) {
