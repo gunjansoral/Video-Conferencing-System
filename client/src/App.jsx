@@ -1,118 +1,37 @@
-// src/App.js
-
-import React, { useState, useRef } from 'react';
-import socket from './socket';
+import React, { useState, useRef, useEffect } from 'react';
+import PeerConnection from './services/PeerConnection';
 import Screen from './components/Screen';
-import { initializePeerConnection } from './services/peerConnection';
-import useLocalCameraStream from './hooks/useLocalCameraStream';
-import useRemoteCameraStream from './hooks/useRemoteCameraStream';
 
 const App = () => {
     const [localStream, setLocalStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
-    const [roomId, setRoomId] = useState('');
     const [connected, setConnected] = useState(false);
-    const peerConnection = useRef(null);
+    const peerConnectionManager = useRef(null);
     const targetUserId = useRef(null);
 
-    // useEffect(() => {
-    //     socket.on('user-joined', async (userId) => {
-    //         console.log(`User joined: ${userId}`);
-    //         targetUserId.current = userId;
-    //         const offer = await peerConnection.current.createOffer();
-    //         await peerConnection.current.setLocalDescription(offer);
-    //         socket.emit('signal', { signal: offer, to: userId });
-    //     });
-    //     socket.on('signal', async ({ signal, from }) => {
-    //         console.log('Signal received:', signal, 'from:', from);
+    useEffect(() => {
+        peerConnectionManager.current = new PeerConnection(targetUserId);
 
-    //         if (signal.type === 'offer') {
-    //             console.log('Processing offer...');
-    //             await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
-    //             const answer = await peerConnection.current.createAnswer();
-    //             await peerConnection.current.setLocalDescription(answer);
-    //             socket.emit('signal', { signal: answer, to: from });
-    //         } else if (signal.type === 'answer') {
-    //             console.log('Processing answer...');
-    //             await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
-    //         } else if (signal.candidate) {
-    //             console.log('Adding ICE candidate:', signal.candidate);
-    //             try {
-    //                 // Ensure the candidate object is correctly structured
-    //                 await peerConnection.current.addIceCandidate(
-    //                     new RTCIceCandidate({
-    //                         candidate: signal.candidate,
-    //                         sdpMid: signal.sdpMid,
-    //                         sdpMLineIndex: signal.sdpMLineIndex,
-    //                     })
-    //                 );
-    //             } catch (error) {
-    //                 console.error('Error adding ICE candidate:', error);
-    //             }
-    //         }
-    //     });
+        return () => {
+            peerConnectionManager.current.close(); // Cleanup on unmount
+        };
+    }, []);
 
-
-    //     socket.on('user-left', (userId) => {
-    //         console.log(`User left: ${userId}`);
-    //         setRemoteStream(null);
-    //         if (peerConnection.current) {
-    //             peerConnection.current.close();
-    //             peerConnection.current = null;
-    //         }
-    //     });
-
-    //     return () => {
-    //         socket.off('user-joined');
-    //         socket.off('signal');
-    //         socket.off('user-left');
-    //     };
-    // }, []);
-    useRemoteCameraStream(socket, peerConnection, targetUserId, setRemoteStream);
-    useLocalCameraStream((stream) => {
+    const handleStartCamera = async () => {
+        const stream = await peerConnectionManager.current.getLocalCameraStream();
         setLocalStream(stream);
-        initializePeerConnection(stream, peerConnection);
-    })
+    };
 
-    const joinRoom = () => {
-        if (roomId && !connected) {
-            socket.emit('join-room', roomId);
-            setConnected(true);
-        }
-    }
-
-    const leaveRoom = () => {
-        if (roomId && connected) {
-            socket.emit('leave-room', roomId);
-            setConnected(false);
-            setRemoteStream(null);
-            if (peerConnection.current) {
-                peerConnection.current.close();
-                peerConnection.current = null;
-            }
-        }
-    }
-
+    const getRemoteStream = () => peerConnectionManager?.current.getRemoteStream();
 
     return (
         <div>
             <h1>WebRTC Video Chat</h1>
             <div>
-                <input
-                    type="text"
-                    placeholder="Enter Room ID"
-                    value={roomId}
-                    onChange={(e) => setRoomId(e.target.value)}
-                />
-                <button onClick={joinRoom} disabled={connected}>
-                    Join Room
-                </button>
-                <button onClick={leaveRoom} disabled={!connected}>
-                    Leave Room
-                </button>
+                <button onClick={handleStartCamera}>Start Camera</button>
             </div>
             <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
-                {localStream && <Screen stream={localStream} isLocal={true} />}
+                {localStream && <Screen stream={localStream} isLocal />}
                 {remoteStream && <Screen stream={remoteStream} isLocal={false} />}
             </div>
         </div>
