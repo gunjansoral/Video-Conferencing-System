@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import PeerConnection from './services/PeerConnection';
+import PeerConnection from './services/peerConnection';
 import Screen from './components/Screen';
 
 const App = () => {
